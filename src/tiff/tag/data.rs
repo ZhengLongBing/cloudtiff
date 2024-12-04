@@ -1,40 +1,69 @@
+//! TIFF标签数据模块
+//!
+//! 本模块定义了TIFF标签的数据类型和相关操作。
+//! 包括各种基本数据类型的存储和转换功能。
+
 use super::TagType;
 use crate::tiff::Endian;
 
+/// TIFF标签数据类型枚举
+///
+/// 包含了TIFF规范中定义的所有数据类型
 #[derive(Clone, Debug)]
 pub enum TagData {
+    /// 8位无符号整数数组
     Byte(Vec<u8>),
+    /// ASCII字符串(以null结尾的字节数组)
     Ascii(Vec<u8>),
+    /// 16位无符号整数数组
     Short(Vec<u16>),
+    /// 32位无符号整数数组
     Long(Vec<u32>),
+    /// 无符号有理数数组,每个元素由两个u32组成(分子,分母)
     Rational(Vec<(u32, u32)>),
+    /// 8位有符号整数数组
     SByte(Vec<i8>),
+    /// 未定义类型的字节数组
     Undefined(Vec<u8>),
+    /// 16位有符号整数数组
     SShort(Vec<i16>),
+    /// 32位有符号整数数组
     SLong(Vec<i32>),
+    /// 有符号有理数数组,每个元素由两个i32组成(分子,分母)
     SRational(Vec<(i32, i32)>),
+    /// 32位浮点数数组
     Float(Vec<f32>),
+    /// 64位浮点数数组
     Double(Vec<f64>),
+    /// IFD偏移量(32位)
     Ifd(u32),
+    /// 64位无符号整数数组
     Long8(Vec<u64>),
+    /// 64位有符号整数数组
     SLong8(Vec<i64>),
+    /// IFD偏移量(64位)
     Ifd8(u64),
+    /// 未知类型数据
     Unknown(Vec<u8>),
 }
 
 impl TagData {
-    pub fn from_string(s: &str) -> Self{
+    /// 从字符串创建ASCII类型的标签数据
+    pub fn from_string(s: &str) -> Self {
         Self::Ascii(s.as_bytes().to_vec())
     }
 
-    pub fn from_short(v: u16) -> Self{
+    /// 从u16值创建Short类型的标签数据
+    pub fn from_short(v: u16) -> Self {
         Self::Short(vec![v])
     }
 
-    pub fn from_long(v: u32) -> Self{
+    /// 从u32值创建Long类型的标签数据
+    pub fn from_long(v: u32) -> Self {
         Self::Long(vec![v])
     }
 
+    /// 获取标签数据中的元素数量
     pub fn len(&self) -> usize {
         match self {
             Self::Byte(vec) => vec.len(),
@@ -57,6 +86,7 @@ impl TagData {
         }
     }
 
+    /// 获取标签数据的类型
     pub fn tag_type(&self) -> TagType {
         match self {
             Self::Byte(_) => TagType::Byte,
@@ -79,12 +109,21 @@ impl TagData {
         }
     }
 
+    /// 将标签数据转换为字节序列
+    ///
+    /// # 参数
+    /// * `endian` - 字节序(大端/小端)
+    ///
+    /// # 返回值
+    /// 返回按指定字节序编码后的字节数组
     pub fn bytes(&self, endian: Endian) -> Vec<u8> {
         match self {
+            // 对于简单类型,直接使用encode_all进行编码
             Self::Byte(vec) => endian.encode_all(vec),
             Self::Ascii(vec) => endian.encode_all(vec),
             Self::Short(vec) => endian.encode_all(vec),
             Self::Long(vec) => endian.encode_all(vec),
+            // 对于有理数类型,需要分别编码分子和分母
             Self::Rational(vec) => vec
                 .iter()
                 .map(|(a, b)| {

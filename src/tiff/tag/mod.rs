@@ -1,7 +1,12 @@
-// refs
-// https://web.archive.org/web/20220119170528/http://www.exif.org/Exif2-2.PDF
-// https://web.archive.org/web/20190624045241if_/http://www.cipa.jp:80/std/documents/e/DC-008-Translation-2019-E.pdf
-// https://www.media.mit.edu/pia/Research/deepview/exif.
+//! TIFF标签处理模块
+//!
+//! 本模块提供了处理TIFF文件标签(Tag)的功能。标签包含了图像的元数据信息,
+//! 如图像尺寸、颜色空间、压缩方式等。
+//!
+//! 参考标准:
+//! - [EXIF 2.2规范](https://web.archive.org/web/20220119170528/http://www.exif.org/Exif2-2.PDF)
+//! - [CIPA DC-008规范](https://web.archive.org/web/20190624045241if_/http://www.cipa.jp:80/std/documents/e/DC-008-Translation-2019-E.pdf)
+//! - [MIT Media Lab EXIF文档](https://www.media.mit.edu/pia/Research/deepview/exif)
 
 use super::Endian;
 use eio::FromBytes;
@@ -9,22 +14,36 @@ use num_enum::{FromPrimitive, IntoPrimitive};
 use num_traits::{cast::NumCast, ToPrimitive};
 use std::fmt::Display;
 
-mod id;
 mod data;
+mod id;
 
-pub use id::TagId;
 pub use data::TagData;
+pub use id::TagId;
 
+/// TIFF标签结构体
+///
+/// 表示TIFF文件中的一个标签,包含标签代码、数据类型、数据计数和实际数据。
 #[derive(Clone, Debug)]
 pub struct Tag {
+    /// 标签代码,用于标识标签类型
     pub code: u16,
+    /// 标签数据类型
     pub datatype: TagType,
+    /// 数据项数量
     pub count: usize,
+    /// 实际数据内容
     pub data: Vec<u8>,
+    /// 字节序
     pub endian: Endian,
 }
 
 impl Tag {
+    /// 创建新的标签实例
+    ///
+    /// # 参数
+    /// * `code` - 标签代码
+    /// * `endian` - 字节序
+    /// * `data` - 标签数据
     pub fn new(code: u16, endian: Endian, data: TagData) -> Self {
         Self {
             code,
@@ -35,10 +54,14 @@ impl Tag {
         }
     }
 
+    /// 获取标签ID
     pub fn id(&self) -> Option<TagId> {
         TagId::try_from(self.code).ok()
     }
 
+    /// 获取单个数值
+    ///
+    /// 当标签只包含一个值时返回该值
     pub fn value<T: NumCast + Copy>(&self) -> Option<T> {
         match self.values() {
             Some(v) if v.len() == 1 => Some(v[0]),
@@ -46,6 +69,9 @@ impl Tag {
         }
     }
 
+    /// 获取所有数值
+    ///
+    /// 根据标签类型解码并返回所有数值
     pub fn values<T: NumCast>(&self) -> Option<Vec<T>> {
         match self.datatype {
             TagType::Byte => self.decode::<1, u8, T>(),
@@ -68,6 +94,9 @@ impl Tag {
         }
     }
 
+    /// 尝试将数据转换为字符串
+    ///
+    /// 仅支持ASCII、Byte和Unknown类型的转换
     pub fn try_to_string(&self) -> Option<String> {
         match self.datatype {
             TagType::Ascii | TagType::Byte | TagType::Unknown => {
@@ -77,6 +106,9 @@ impl Tag {
         }
     }
 
+    /// 将数据转换为字符串(可能有损)
+    ///
+    /// 对于不同类型的数据采用不同的转换策略
     pub fn as_string_lossy(&self) -> String {
         match self.datatype {
             TagType::Ascii => String::from_utf8_lossy(&self.data).into_owned(),
@@ -95,10 +127,12 @@ impl Tag {
         }
     }
 
+    /// 解码普通数值类型的数据
     fn decode<const N: usize, A: FromBytes<N> + ToPrimitive, T: NumCast>(&self) -> Option<Vec<T>> {
         self.endian.decode_all_to_primative::<N, A, T>(&self.data)
     }
 
+    /// 解码有理数类型的数据
     fn decode_rational<const N: usize, A: FromBytes<N> + ToPrimitive, T: NumCast>(
         &self,
     ) -> Option<Vec<T>> {
@@ -149,31 +183,52 @@ impl Display for Tag {
     }
 }
 
+/// TIFF标签数据类型枚举
+///
+/// 定义了TIFF标签支持的所有数据类型
 #[derive(Debug, PartialEq, Clone, Copy, IntoPrimitive, FromPrimitive)]
 #[repr(u16)]
 pub enum TagType {
+    /// 8位无符号整数
     Byte = 1,
+    /// ASCII字符串
     Ascii = 2,
+    /// 16位无符号整数
     Short = 3,
+    /// 32位无符号整数
     Long = 4,
+    /// 无符号有理数(两个32位无符号整数的比值)
     Rational = 5,
+    /// 8位有符号整数
     SByte = 6,
+    /// 未定义类型
     Undefined = 7,
+    /// 16位有符号整数
     SShort = 8,
+    /// 32位有符号整数
     SLong = 9,
+    /// 有符号有理数(两个32位有符号整数的比值)
     SRational = 10,
+    /// 32位浮点数
     Float = 11,
+    /// 64位浮点数
     Double = 12,
+    /// IFD偏移量
     Ifd = 13,
+    /// 64位无符号整数
     Long8 = 16,
+    /// 64位有符号整数
     SLong8 = 17,
+    /// 64位IFD偏移量
     Ifd8 = 18,
 
+    /// 未知类型
     #[num_enum(default)]
     Unknown = 0xFFFF,
 }
 
 impl TagType {
+    /// 获取数据类型的字节大小
     pub const fn size_in_bytes(&self) -> usize {
         match self {
             TagType::Byte => 1,
@@ -192,7 +247,6 @@ impl TagType {
             TagType::Long8 => 8,
             TagType::SLong8 => 8,
             TagType::Ifd8 => 8,
-
             TagType::Unknown => 1,
         }
     }

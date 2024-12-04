@@ -1,3 +1,10 @@
+//! 渲染模块
+//!
+//! 本模块提供了对云优化地理影像(COG)进行渲染的功能。主要包括:
+//! - 同步和异步读取器的抽象
+//! - 渲染构建器用于配置渲染参数
+//! - 区域和分辨率控制
+
 use crate::cog::{CloudTiff, CloudTiffResult};
 use crate::io::ReadRange;
 use crate::projection::Projection;
@@ -17,30 +24,45 @@ pub mod renderer;
 pub mod tiles;
 pub mod util;
 
+/// 表示需要读取器的占位符类型
 pub struct ReaderRequired;
 
+/// 同步读取器包装类型
 pub struct SyncReader(Arc<dyn ReadRange>);
 
+/// 异步读取器包装类型
 #[cfg(feature = "async")]
 #[derive(Clone)]
 pub struct AsyncReader(Arc<dyn AsyncReadRange>);
 
+/// 渲染构建器
+///
+/// 用于配置和构建渲染操作的参数
 #[derive(Debug)]
 pub struct RenderBuilder<'a, R> {
+    /// COG 影像引用
     pub cog: &'a CloudTiff,
+    /// 读取器实例
     pub reader: R,
+    /// 输入投影
     pub input_projection: Projection,
+    /// 渲染区域
     pub region: RenderRegion,
+    /// 输出分辨率
     pub resolution: (u32, u32),
 }
 
+/// 渲染区域类型
 #[derive(Debug)]
 pub enum RenderRegion {
+    /// 输入裁剪区域,使用归一化坐标(0-1)
     InputCrop(Region<UnitFloat>),
+    /// 输出区域,包含EPSG代码和实际坐标
     OutputRegion((u16, Region<f64>)),
 }
 
 impl CloudTiff {
+    /// 创建一个新的渲染构建器
     pub fn renderer(&self) -> RenderBuilder<ReaderRequired> {
         RenderBuilder {
             cog: self,
@@ -53,6 +75,7 @@ impl CloudTiff {
 }
 
 impl<'a, S> RenderBuilder<'a, S> {
+    /// 设置读取器
     fn set_reader<R>(self, reader: R) -> RenderBuilder<'a, R> {
         let Self {
             cog,
@@ -72,10 +95,12 @@ impl<'a, S> RenderBuilder<'a, S> {
 }
 
 impl<'a> RenderBuilder<'a, ReaderRequired> {
+    /// 使用同步读取器
     pub fn with_reader<R: Read + Seek + 'static>(self, reader: R) -> RenderBuilder<'a, SyncReader> {
         self.set_reader(SyncReader(Arc::new(Mutex::new(reader))))
     }
 
+    /// 使用`Arc<Mutex>`包装的同步读取器
     pub fn with_arc_mutex_reader<R: Read + Seek + 'static>(
         self,
         reader: Arc<Mutex<R>>,
@@ -83,6 +108,7 @@ impl<'a> RenderBuilder<'a, ReaderRequired> {
         self.set_reader(SyncReader(reader))
     }
 
+    /// 使用实现了ReadRange的读取器
     pub fn with_range_reader<R: ReadRange + 'static>(
         self,
         reader: R,
@@ -90,6 +116,7 @@ impl<'a> RenderBuilder<'a, ReaderRequired> {
         self.set_reader(SyncReader(Arc::new(reader)))
     }
 
+    /// 使用异步读取器
     #[cfg(feature = "async")]
     pub fn with_async_reader<R: AsyncRead + AsyncSeek + Send + Sync + Unpin + 'static>(
         self,
@@ -98,6 +125,7 @@ impl<'a> RenderBuilder<'a, ReaderRequired> {
         self.set_reader(AsyncReader(reader))
     }
 
+    /// 使用实现了AsyncReadRange的异步读取器
     #[cfg(feature = "async")]
     pub fn with_async_range_reader<R: AsyncReadRange + 'static>(
         self,
@@ -106,6 +134,7 @@ impl<'a> RenderBuilder<'a, ReaderRequired> {
         self.set_reader(AsyncReader(Arc::new(reader)))
     }
 
+    /// 使用Arc包装的异步读取器
     #[cfg(feature = "async")]
     pub fn with_async_arc_range_reader<R: AsyncReadRange + 'static>(
         self,
@@ -116,22 +145,26 @@ impl<'a> RenderBuilder<'a, ReaderRequired> {
 }
 
 impl<'a, S> RenderBuilder<'a, S> {
+    /// 设置精确的输出分辨率
     pub fn with_exact_resolution(mut self, resolution: (u32, u32)) -> Self {
         self.resolution = resolution;
         self
     }
 
+    /// 根据最大兆像素限制设置分辨率
     pub fn with_mp_limit(mut self, max_megapixels: f64) -> Self {
         self.resolution =
             util::resolution_from_mp_limit(self.cog.full_dimensions(), max_megapixels);
         self
     }
 
+    /// 设置输入裁剪区域
     pub fn of_crop(mut self, min_x: f64, min_y: f64, max_x: f64, max_y: f64) -> Self {
         self.region = RenderRegion::InputCrop(Region::new_saturated(min_x, min_y, max_x, max_y));
         self
     }
 
+    /// 使用经纬度设置输出区域(单位:度)
     pub fn of_output_region_lat_lon_deg(
         self,
         west: f64,
@@ -148,6 +181,7 @@ impl<'a, S> RenderBuilder<'a, S> {
         )
     }
 
+    /// 设置输出区域
     pub fn of_output_region(
         mut self,
         epsg: u16,
