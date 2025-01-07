@@ -52,7 +52,11 @@ impl fmt::Debug for S3Reader {
 
 /// 实现异步范围读取特性
 impl AsyncReadRange for S3Reader {
-    fn read_range_async<'a>(&'a self, start: u64, buf: &'a mut [u8]) -> BoxFuture<Result<usize>> {
+    fn read_range_async<'a>(
+        &'a self,
+        start: u64,
+        buf: &'a mut [u8],
+    ) -> BoxFuture<'a, Result<usize>> {
         let n = buf.len();
         // S3 Range 请求是包含性的,所以结束位置需要减1
         let end = start + n as u64 - 1;

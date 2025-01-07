@@ -20,7 +20,6 @@ use tokio::io::AsyncRead;
 /// HTTP 范围读取器
 ///
 /// 通过 HTTP Range 请求实现远程文件的异步读取
-#[derive(Debug)]
 pub struct HttpReader {
     /// 远程文件的 URL
     url: Url,
@@ -104,7 +103,11 @@ impl AsyncReadRange for HttpReader {
     /// # 参数
     /// * `start` - 起始字节位置
     /// * `buf` - 目标缓冲区
-    fn read_range_async<'a>(&'a self, start: u64, buf: &'a mut [u8]) -> BoxFuture<Result<usize>> {
+    fn read_range_async<'a>(
+        &'a self,
+        start: u64,
+        buf: &'a mut [u8],
+    ) -> BoxFuture<'a, Result<usize>> {
         // 计算请求范围的结束位置
         let end = start + buf.len() as u64 - 1;
 
